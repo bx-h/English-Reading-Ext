@@ -1,0 +1,36 @@
+{
+  "name": "english-reading-ext",
+  "version": "0.1.0",
+  "description": "逼你用上下文猜词义的英语阅读插件 (Chrome MV3)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bx-h/English-Reading-Ext.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bx-h/English-Reading-Ext/issues"
+  },
+  "homepage": "https://github.com/bx-h/English-Reading-Ext#readme",
+  "keywords": [
+    "chrome-extension",
+    "english-learning",
+    "cloze",
+    "reading",
+    "mv3"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "package:dist": "pnpm build && tar -czf english-reading-ext-dist.tgz -C dist ."
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.26",
+    "@types/chrome": "^0.0.270",
+    "@types/jsdom": "^28.0.3",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}

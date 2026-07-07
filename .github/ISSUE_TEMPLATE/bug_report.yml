@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the page type, selected text, and whether mock mode was enabled.
+      placeholder: |
+        1. Go to ...
+        2. Select ...
+        3. Click ...
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      placeholder: Chrome version
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Do not include API keys, tokens, cookies, or private page content.
