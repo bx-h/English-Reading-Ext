@@ -30,6 +30,9 @@ async function runConnectionTest(): Promise<void> {
     const result = await testLlmConnection(settings);
     status.dataset.state = result.ok ? 'success' : 'error';
     status.textContent = result.message;
+  } catch {
+    status.dataset.state = 'error';
+    status.textContent = '连接失败：无法申请接口域名权限';
   } finally {
     button.disabled = false;
   }

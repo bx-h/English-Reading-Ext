@@ -19,7 +19,7 @@ pnpm build
 ## Pull Request Guidelines
 
 - Keep changes scoped to one problem.
-- Do not commit generated `dist/` output, package archives, logs, local secrets, or evaluation output.
+- Do not commit the root `dist/` output, package archives, logs, local secrets, or evaluation output. The committed iOS Safari resource snapshot under `platforms/ios/EnglishReading/EnglishReading Extension/Resources/` is the explicit exception; refresh it with `pnpm ios:sync`.
 - Do not add real API keys, tokens, private endpoints, or user data to tests, fixtures, screenshots, or documentation.
 - For content-script UI changes, include the affected browser state and viewport in the PR description.
 

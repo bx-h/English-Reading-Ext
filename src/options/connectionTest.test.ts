@@ -63,4 +63,37 @@ describe('LLM connection test button', () => {
       );
     });
   });
+
+  it('shows a failure and restores the button when endpoint permission cannot be requested', async () => {
+    document.body.innerHTML = `
+      <input id="apiKey" value="test-secret" />
+      <input id="apiBaseUrl" value="http://localhost:11434/v1" />
+      <select id="authMode"><option value="bearer" selected>Bearer</option></select>
+      <input id="model" value="local-model" />
+      <input id="fallbackModels" value="" />
+      <input id="perRequestTimeoutMs" value="28000" />
+      <select id="glossLang"><option value="zh" selected>中文</option></select>
+      <input id="forceMock" type="checkbox" />
+      <input id="degradeToMockOnError" type="checkbox" />
+      <button id="testConnection">测试连接</button>
+      <span id="connectionStatus"></span>
+    `;
+    vi.stubGlobal('chrome', {
+      permissions: {
+        contains: vi.fn().mockResolvedValue(false),
+        request: vi.fn().mockRejectedValue(new Error('origin not declared')),
+      },
+    });
+
+    initConnectionTest();
+    const button = document.querySelector<HTMLButtonElement>('#testConnection')!;
+    button.click();
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('#connectionStatus')?.textContent).toBe(
+        '连接失败：无法申请接口域名权限',
+      );
+      expect(button.disabled).toBe(false);
+    });
+  });
 });
