@@ -1,6 +1,5 @@
 import type { ClozeResult } from '../types';
 import { BLANK_TOKEN } from '../types';
-import { closestBlock } from './extract';
 
 export interface RenderHandlers {
   onSelect: (optionIndex: number) => void;
@@ -146,8 +145,9 @@ const STYLE = `
   all: unset;
   box-sizing: border-box;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 7px 9px;
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
@@ -179,7 +179,7 @@ const STYLE = `
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 1px;
+  margin-top: 0;
 }
 .cw-option--correct {
   border-color: hsl(var(--primary));
@@ -309,64 +309,215 @@ const STYLE = `
 }
 `;
 
-const HOST_CLASS = 'english-reading-ext-cloze';
-const FLOATING_GAP_PX = 8;
+export const CARD_HOST_CLASS = 'english-reading-ext-cloze';
+const FLOATING_GAP_PX = 16;
 const VIEWPORT_MARGIN_PX = 8;
 const MIN_FLOATING_WIDTH_PX = 340;
 const MAX_FLOATING_WIDTH_PX = 460;
 const FLOATING_WIDTH_PX = 420;
+const SOURCE_HIGHLIGHT_NAME = 'english-reading-ext-source-sentence';
+let outsideDismissInstalled = false;
+let highlightedHost: HTMLElement | null = null;
+const DISMISS_HANDLER = Symbol.for('english-reading-ext.dismiss-handler');
+type DismissibleHost = HTMLElement & { [DISMISS_HANDLER]?: () => void };
+
+type PlacementName = 'below' | 'above' | 'right' | 'left';
+
+interface PlacementCandidate {
+  name: PlacementName;
+  left: number;
+  top: number;
+}
 
 /** 移除页面上所有残留卡片（防御性兜底） */
 export function clearCards(): void {
-  document.querySelectorAll(`.${HOST_CLASS}`).forEach((n) => n.remove());
+  document.querySelectorAll(`.${CARD_HOST_CLASS}`).forEach((n) => n.remove());
+  clearSourceHighlight();
 }
 
-/** 在选区下方挂载卡片宿主，无法定位时回退到所在 block 后方 */
-export function mountCard(anchor: Range): CardView {
+/** 在完整来源句附近挂载卡片宿主；不修改宿主页面的段落文档流。 */
+export function mountCard(
+  anchor: Range,
+  sourceRange: Range = anchor,
+  onDismiss?: () => void,
+): CardView | null {
+  ensureOutsideDismissListener();
   const host = document.createElement('div');
-  host.className = HOST_CLASS;
+  host.className = CARD_HOST_CLASS;
 
-  if (!positionHostBelowSelection(host, anchor)) {
-    const block = closestBlock(anchor.endContainer);
-    if (block && block.parentNode) {
-      block.parentNode.insertBefore(host, block.nextSibling);
-    } else {
-      document.body.appendChild(host);
-    }
-  }
+  const floating = positionHostNearSource(host, anchor, sourceRange);
+  if (!floating) return null;
 
   const shadow = host.attachShadow({ mode: 'open' });
+  if (onDismiss) (host as DismissibleHost)[DISMISS_HANDLER] = onDismiss;
+  installSourceHighlight(host, sourceRange);
+  const reposition = () => positionHostNearSource(host, anchor, sourceRange);
+  let lockedPlacement: PlacementName | null = null;
+  const repositionLocked = () =>
+    positionHostNearSource(host, anchor, sourceRange, lockedPlacement);
 
   return {
-    loading: (handlers) => renderLoadingState(shadow, handlers),
-    done: (result, mocked, handlers) => renderCard(shadow, result, mocked, handlers),
-    fail: (msg, onRetry) => renderFail(shadow, msg, onRetry),
-    remove: () => host.remove(),
+    loading: (handlers) => {
+      renderLoadingState(shadow, handlers);
+      reposition();
+    },
+    done: (result, mocked, handlers) => {
+      renderCard(shadow, result, mocked, handlers, repositionLocked);
+      reposition();
+      lockedPlacement = placementName(host.dataset.placement);
+    },
+    fail: (msg, onRetry) => {
+      renderFail(shadow, msg, onRetry);
+      reposition();
+    },
+    remove: () => removeCardHost(host),
   };
 }
 
-function positionHostBelowSelection(host: HTMLElement, range: Range): boolean {
-  if (!document.body) return false;
+function installSourceHighlight(host: HTMLElement, range: Range): void {
+  clearSourceHighlight();
+  const highlightApi = globalThis as typeof globalThis & {
+    Highlight?: new (...ranges: Range[]) => unknown;
+    CSS?: { highlights?: { set(name: string, highlight: unknown): void } };
+  };
+  const registry = highlightApi.CSS?.highlights;
+  const HighlightConstructor = highlightApi.Highlight;
+  if (!registry || !HighlightConstructor) return;
 
-  const selectionRect = lastVisibleRect(range);
-  if (!selectionRect) return false;
+  ensureSourceHighlightStyle();
+  registry.set(SOURCE_HIGHLIGHT_NAME, new HighlightConstructor(range));
+  highlightedHost = host;
+}
+
+function ensureSourceHighlightStyle(): void {
+  if (document.querySelector('[data-english-reading-ext-highlight]')) return;
+  const style = document.createElement('style');
+  style.dataset.englishReadingExtHighlight = 'true';
+  style.textContent = `
+    ::highlight(${SOURCE_HIGHLIGHT_NAME}) {
+      text-decoration-line: underline;
+      text-decoration-color: #2fa66b;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+    }
+  `;
+  (document.head ?? document.documentElement).appendChild(style);
+}
+
+function clearSourceHighlight(host?: HTMLElement): void {
+  if (host && highlightedHost && highlightedHost !== host) return;
+  const css = globalThis.CSS as typeof CSS & {
+    highlights?: { delete(name: string): boolean };
+  };
+  css?.highlights?.delete(SOURCE_HIGHLIGHT_NAME);
+  highlightedHost = null;
+}
+
+function removeCardHost(host: HTMLElement): void {
+  delete (host as DismissibleHost)[DISMISS_HANDLER];
+  host.remove();
+  clearSourceHighlight(host);
+}
+
+function dismissCardHost(host: HTMLElement): void {
+  host.dataset.dismissed = 'true';
+  const dismissibleHost = host as DismissibleHost;
+  const onDismiss = dismissibleHost[DISMISS_HANDLER];
+  delete dismissibleHost[DISMISS_HANDLER];
+  onDismiss?.();
+  host.remove();
+  clearSourceHighlight(host);
+}
+
+function ensureOutsideDismissListener(): void {
+  if (outsideDismissInstalled) return;
+  document.addEventListener('click', dismissInteractiveCardsOutside, true);
+  outsideDismissInstalled = true;
+}
+
+function dismissInteractiveCardsOutside(event: MouseEvent): void {
+  const path = event.composedPath();
+  document.querySelectorAll<HTMLElement>(`.${CARD_HOST_CLASS}`).forEach((host) => {
+    if (path.includes(host)) return;
+    dismissCardHost(host);
+  });
+}
+
+function positionHostNearSource(
+  host: HTMLElement,
+  anchor: Range,
+  sourceRange: Range,
+  preferredPlacement: PlacementName | null = null,
+): boolean {
+  if (!document.body) return false;
+  if (host.dataset.dismissed === 'true') return false;
+
+  const sourceRects = visibleRects(sourceRange);
+  if (sourceRects.length === 0) return false;
+  const sourceBounds = boundingRect(sourceRects);
+  const anchorRect = lastVisibleRect(anchor) ?? sourceRects[sourceRects.length - 1];
 
   const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+  const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
   const margin = VIEWPORT_MARGIN_PX;
   const maxWidth = Math.max(0, viewportWidth - margin * 2);
   const width = Math.min(
-    Math.max(FLOATING_WIDTH_PX, selectionRect.width + 96, MIN_FLOATING_WIDTH_PX),
+    Math.max(FLOATING_WIDTH_PX, anchorRect.width + 96, MIN_FLOATING_WIDTH_PX),
     MAX_FLOATING_WIDTH_PX,
     maxWidth,
   );
-  const clampedLeft = clamp(selectionRect.left, margin, viewportWidth - margin - width);
+  const clampedLeft = clamp(anchorRect.left, margin, viewportWidth - margin - width);
+  const measuredHeight = host.getBoundingClientRect().height;
+  const naturalHeight = measuredHeight > 0 ? measuredHeight : 280;
+  const availablePreferredHeight = preferredPlacement
+    ? availableHeightForPlacement(
+        preferredPlacement,
+        sourceBounds,
+        viewportHeight,
+        margin,
+      )
+    : naturalHeight;
+  const height = Math.min(naturalHeight, availablePreferredHeight);
+  const clampedTop = clamp(
+    anchorRect.top,
+    margin,
+    viewportHeight - margin - height,
+  );
+  const candidates = placementCandidates(
+    sourceBounds,
+    clampedLeft,
+    clampedTop,
+    width,
+    height,
+  );
+  const safeCandidates = candidates.filter(
+    (candidate) =>
+      candidate.left >= margin &&
+      candidate.top >= margin &&
+      candidate.left + width <= viewportWidth - margin &&
+      candidate.top + height <= viewportHeight - margin,
+  );
+  const preferred = preferredPlacement
+    ? candidates.find((candidate) => candidate.name === preferredPlacement)
+    : null;
+  const chosen = preferred ??
+    safeCandidates.sort(
+      (a, b) =>
+        distanceFromRect(anchorRect, a, width, height) -
+        distanceFromRect(anchorRect, b, width, height),
+    )[0] ?? candidates[0];
 
   host.dataset.floating = 'true';
+  host.dataset.placement = chosen.name;
   host.style.position = 'absolute';
-  host.style.top = `${Math.round(window.scrollY + selectionRect.bottom + FLOATING_GAP_PX)}px`;
-  host.style.left = `${Math.round(window.scrollX + clampedLeft)}px`;
+  host.style.top = `${Math.round(window.scrollY + chosen.top)}px`;
+  host.style.left = `${Math.round(window.scrollX + chosen.left)}px`;
   host.style.width = `${Math.round(width)}px`;
   host.style.maxWidth = `calc(100vw - ${margin * 2}px)`;
+  host.style.maxHeight = preferredPlacement && naturalHeight > height
+    ? `${Math.round(height)}px`
+    : '';
+  host.style.overflowY = preferredPlacement && naturalHeight > height ? 'auto' : '';
   host.style.display = 'block';
   host.style.boxSizing = 'border-box';
   host.style.zIndex = '2147483647';
@@ -374,16 +525,98 @@ function positionHostBelowSelection(host: HTMLElement, range: Range): boolean {
   return true;
 }
 
+function placementName(value: string | undefined): PlacementName | null {
+  return value === 'below' || value === 'above' || value === 'right' || value === 'left'
+    ? value
+    : null;
+}
+
+function placementCandidates(
+  sourceBounds: { left: number; top: number; right: number; bottom: number },
+  clampedLeft: number,
+  clampedTop: number,
+  width: number,
+  height: number,
+): PlacementCandidate[] {
+  return [
+    { name: 'below', left: clampedLeft, top: sourceBounds.bottom + FLOATING_GAP_PX },
+    { name: 'above', left: clampedLeft, top: sourceBounds.top - height - FLOATING_GAP_PX },
+    { name: 'right', left: sourceBounds.right + FLOATING_GAP_PX, top: clampedTop },
+    { name: 'left', left: sourceBounds.left - width - FLOATING_GAP_PX, top: clampedTop },
+  ];
+}
+
+function availableHeightForPlacement(
+  placement: PlacementName,
+  sourceBounds: { top: number; bottom: number },
+  viewportHeight: number,
+  margin: number,
+): number {
+  if (placement === 'above') {
+    return Math.max(0, sourceBounds.top - FLOATING_GAP_PX - margin);
+  }
+  if (placement === 'below') {
+    return Math.max(
+      0,
+      viewportHeight - margin - sourceBounds.bottom - FLOATING_GAP_PX,
+    );
+  }
+  return Math.max(0, viewportHeight - margin * 2);
+}
+
 function lastVisibleRect(range: Range): DOMRect | null {
+  const rects = visibleRects(range);
+  return rects[rects.length - 1] ?? null;
+}
+
+function visibleRects(range: Range): DOMRect[] {
   const rects = Array.from(range.getClientRects()).filter(
     (rect) => rect.width > 0 && rect.height > 0,
   );
-  if (rects.length > 0) {
-    return rects[rects.length - 1];
-  }
+  if (rects.length > 0) return rects;
 
-  const rect = range.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 ? rect : null;
+  const bounding = range.getBoundingClientRect();
+  return bounding.width > 0 && bounding.height > 0 ? [bounding] : [];
+}
+
+function boundingRect(rects: DOMRect[]): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+} {
+  return rects.reduce(
+    (bounds, rect) => ({
+      left: Math.min(bounds.left, rect.left),
+      top: Math.min(bounds.top, rect.top),
+      right: Math.max(bounds.right, rect.right),
+      bottom: Math.max(bounds.bottom, rect.bottom),
+    }),
+    { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity },
+  );
+}
+
+function distanceFromRect(
+  anchor: DOMRect,
+  candidate: PlacementCandidate,
+  width: number,
+  height: number,
+): number {
+  const right = candidate.left + width;
+  const bottom = candidate.top + height;
+  const horizontalGap =
+    anchor.right < candidate.left
+      ? candidate.left - anchor.right
+      : anchor.left > right
+        ? anchor.left - right
+        : 0;
+  const verticalGap =
+    anchor.bottom < candidate.top
+      ? candidate.top - anchor.bottom
+      : anchor.top > bottom
+        ? anchor.top - bottom
+        : 0;
+  return Math.hypot(horizontalGap, verticalGap);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -435,7 +668,7 @@ function renderFail(shadow: ShadowRoot, msg: string, onRetry?: () => void): void
   const host = shadow.host as HTMLElement;
   shadow
     .querySelector('[data-dismiss]')!
-    .addEventListener('click', () => host.remove());
+    .addEventListener('click', () => dismissCardHost(host));
 }
 
 function renderCard(
@@ -443,6 +676,7 @@ function renderCard(
   result: ClozeResult,
   mocked: boolean,
   handlers: RenderHandlers,
+  onLayoutChange: () => void,
 ): void {
   const [before, after] = splitBlank(result.translationWithBlank);
   const optionsHtml = result.options
@@ -482,12 +716,14 @@ function renderCard(
       if (!Number.isInteger(optionIndex)) return;
       handlers.onSelect(optionIndex);
       reveal(shadow, result, optionIndex);
+      onLayoutChange();
     });
   });
 
   shadow.querySelector('[data-cw-action="reveal"]')!.addEventListener('click', () => {
     handlers.onReveal();
     reveal(shadow, result, null);
+    onLayoutChange();
   });
 }
 

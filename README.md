@@ -1,6 +1,6 @@
 # Cloze Card Coach
 
-A Chrome MV3 extension for contextual English reading practice.
+A Chrome MV3 and iOS Safari extension for contextual English reading practice.
 
 Instead of translating the whole page, Cloze Card Coach reacts when you select an English word or phrase. It reads the nearby sentence or paragraph, creates a short cloze-style meaning question, and stores your answer locally for review.
 
@@ -50,6 +50,21 @@ The production build is written to `dist/`.
 3. Click "Load unpacked".
 4. Select this repository's `dist/` directory.
 
+## Run In iOS Safari
+
+The committed Xcode wrapper lives in `platforms/ios/EnglishReading/`. Refresh
+its Web Extension resources and open the project with:
+
+```bash
+pnpm ios:sync
+open platforms/ios/EnglishReading/EnglishReading.xcodeproj
+```
+
+Choose your Apple development team for the app and extension targets, install
+the container app, then enable EnglishReading under Safari Extensions. See
+[the iOS maintenance guide](platforms/ios/README.md) for build and regeneration
+details.
+
 ## LLM Provider Setup
 
 Open the extension options page and configure:
@@ -91,6 +106,7 @@ The script writes sanitized results to `scripts/eval-m0-output.json`, which is i
 - `src/lib/`: providers, settings, and local store helpers
 - `src/options/`: extension options page
 - `scripts/`: local evaluation and fixture utilities
+- `platforms/ios/`: committed iOS Safari container and extension wrapper
 - `openspec/`: change specification history for the cloze feedback interaction
 
 ## Contributing

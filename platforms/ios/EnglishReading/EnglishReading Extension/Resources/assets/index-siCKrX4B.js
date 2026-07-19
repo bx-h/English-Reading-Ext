@@ -1,0 +1,1 @@
+const e={apiKey:"",apiBaseUrl:"https://api.openai.com/v1",model:"gpt-4o-mini",fallbackModels:[],authMode:"bearer",glossLang:"zh",forceMock:!1,perRequestTimeoutMs:4e4,degradeToMockOnError:!0},o="{{BLANK}}";export{o as B,e as D};

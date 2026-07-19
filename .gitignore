@@ -9,3 +9,19 @@ secret.txt
 secrets/
 .env
 .env.*
+
+# Xcode local/build artifacts and signing material
+**/DerivedData/
+**/DeviceDerivedData/
+**/SimulatorDerivedData/
+**/xcuserdata/
+*.xcuserstate
+.build/
+build/
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.mobileprovision
+*.cer
+*.p12
+.xcode.env.local
