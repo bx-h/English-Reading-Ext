@@ -26,5 +26,9 @@ export default defineManifest({
   options_page: 'src/options/index.html',
   action: {
     default_title: '猜词义 · 设置',
+    // iOS Safari has no Chrome-style extension details page. Reuse the
+    // extension-owned options document as the toolbar popup so settings are
+    // written to this Safari extension's own chrome.storage.local.
+    default_popup: 'src/options/index.html',
   },
 });

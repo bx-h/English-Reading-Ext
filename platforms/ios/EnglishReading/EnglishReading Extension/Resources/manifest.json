@@ -26,7 +26,8 @@
   ],
   "options_page": "src/options/index.html",
   "action": {
-    "default_title": "猜词义 · 设置"
+    "default_title": "猜词义 · 设置",
+    "default_popup": "src/options/index.html"
   },
   "web_accessible_resources": [
     {
