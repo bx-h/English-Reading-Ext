@@ -1,5 +1,6 @@
 import { loadSettings, saveSettings } from '../lib/settings';
 import { listRecords } from '../lib/store';
+import { initConnectionTest } from './connectionTest';
 
 const $ = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
@@ -17,6 +18,7 @@ async function init(): Promise<void> {
   $<HTMLInputElement>('degradeToMockOnError').checked = s.degradeToMockOnError;
 
   $('save').addEventListener('click', onSave);
+  initConnectionTest();
   await renderRecords();
 }
 

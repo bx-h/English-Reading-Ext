@@ -21,7 +21,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "ios:sync": "pnpm build && bash scripts/sync-ios-resources.sh",
+    "ios:regenerate": "pnpm build && xcrun safari-web-extension-packager dist --ios-only --swift --copy-resources --no-open --no-prompt --force --app-name EnglishReading --bundle-identifier com.bxhuang.EnglishReading --project-location platforms/ios",
     "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "package:dist": "pnpm build && tar -czf english-reading-ext-dist.tgz -C dist ."
   },
@@ -31,6 +34,7 @@
     "@types/jsdom": "^28.0.3",
     "jsdom": "^29.1.1",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^2.1.9"
   }
 }

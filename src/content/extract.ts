@@ -54,6 +54,23 @@ export function extractContext(sel: Selection): ClozeRequestPayload | null {
   };
 }
 
+/** 找到包含当前 selection 的完整句子 Range，供定位和整句标记使用。 */
+export function sentenceRangeForSelection(sel: Selection): Range | null {
+  const selectionRange = sel.getRangeAt(0);
+  const block = closestBlock(selectionRange.startContainer);
+  if (!block) return null;
+
+  const mapped = normalizedTextMap(block);
+  const needle = normalize(sel.toString());
+  if (needle.length === 0) return null;
+
+  const candidates = splitSentences(mapped.text)
+    .filter((sentence) => sentence.includes(needle))
+    .flatMap((sentence) => rangesForMappedText(mapped, sentence));
+
+  return candidates.find((candidate) => rangeContains(candidate, selectionRange)) ?? null;
+}
+
 /** 抽取与渲染共用：找到选区/节点最近的块级祖先 */
 export function closestBlock(node: Node): HTMLElement | null {
   let el: Node | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
@@ -80,6 +97,91 @@ export function isEditable(node: Node): boolean {
 
 function normalize(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+interface TextPosition {
+  startNode: Text;
+  startOffset: number;
+  endNode: Text;
+  endOffset: number;
+}
+
+function normalizedTextMap(root: HTMLElement): {
+  text: string;
+  positions: TextPosition[];
+} {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const chars: string[] = [];
+  const positions: TextPosition[] = [];
+  let current = walker.nextNode() as Text | null;
+
+  while (current) {
+    for (let offset = 0; offset < current.data.length; offset++) {
+      const char = current.data[offset];
+      if (/\s/.test(char)) {
+        if (chars.length === 0) continue;
+        if (chars[chars.length - 1] === ' ') {
+          positions[positions.length - 1].endNode = current;
+          positions[positions.length - 1].endOffset = offset + 1;
+          continue;
+        }
+        chars.push(' ');
+      } else {
+        chars.push(char);
+      }
+      positions.push({
+        startNode: current,
+        startOffset: offset,
+        endNode: current,
+        endOffset: offset + 1,
+      });
+    }
+    current = walker.nextNode() as Text | null;
+  }
+
+  if (chars[chars.length - 1] === ' ') {
+    chars.pop();
+    positions.pop();
+  }
+  return { text: chars.join(''), positions };
+}
+
+function rangeFromMappedText(
+  positions: TextPosition[],
+  startIndex: number,
+  length: number,
+): Range | null {
+  const start = positions[startIndex];
+  const end = positions[startIndex + length - 1];
+  if (!start || !end) return null;
+
+  const range = document.createRange();
+  range.setStart(start.startNode, start.startOffset);
+  range.setEnd(end.endNode, end.endOffset);
+  return range;
+}
+
+function rangesForMappedText(
+  mapped: { text: string; positions: TextPosition[] },
+  needle: string,
+): Range[] {
+  const ranges: Range[] = [];
+  let searchFrom = 0;
+  while (searchFrom <= mapped.text.length - needle.length) {
+    const startIndex = mapped.text.indexOf(needle, searchFrom);
+    if (startIndex === -1) break;
+    const range = rangeFromMappedText(mapped.positions, startIndex, needle.length);
+    if (range) ranges.push(range);
+    searchFrom = startIndex + 1;
+  }
+  return ranges;
+}
+
+function rangeContains(container: Range, inner: Range): boolean {
+  return (
+    container.compareBoundaryPoints(Range.START_TO_START, inner) <= 0 &&
+    container.compareBoundaryPoints(Range.END_TO_END, inner) >= 0
+  );
 }
 
 function splitSentences(text: string): string[] {

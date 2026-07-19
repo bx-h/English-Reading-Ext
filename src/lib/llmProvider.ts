@@ -71,6 +71,9 @@ export class LLMProvider implements ClozeProvider {
     const body = {
       model,
       temperature: 0.3,
+      ...(shouldDisableDeepSeekThinking(apiBaseUrl, model)
+        ? { thinking: { type: 'disabled' as const } }
+        : {}),
       // 一道题的 JSON 约 200~260 token，限制上限以缩短生成耗时
       max_tokens: 320,
       messages: [
@@ -116,6 +119,17 @@ export class LLMProvider implements ClozeProvider {
 
 function trimSlash(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+function shouldDisableDeepSeekThinking(baseUrl: string, model: string): boolean {
+  try {
+    return (
+      new URL(baseUrl).hostname === 'api.deepseek.com' &&
+      /^deepseek-v4-(flash|pro)$/.test(model)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

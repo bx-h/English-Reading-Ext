@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "猜词义 · 英语阅读插件",
+  "version": "0.1.0",
+  "description": "逼你用上下文猜词义：划词后在原文下方插入挖空译文，选择后揭示答案。",
+  "permissions": [
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/index.ts-loader-hZcpyyNj.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "src/options/index.html",
+  "action": {
+    "default_title": "猜词义 · 设置"
+  },
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "assets/index-siCKrX4B.js",
+        "assets/index.ts-OjgefUdL.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
