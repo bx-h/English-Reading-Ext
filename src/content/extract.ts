@@ -100,9 +100,9 @@ function normalize(text: string): string {
 }
 
 interface TextPosition {
-  startNode: Text;
+  startNode: Node;
   startOffset: number;
-  endNode: Text;
+  endNode: Node;
   endOffset: number;
 }
 
@@ -110,40 +110,90 @@ function normalizedTextMap(root: HTMLElement): {
   text: string;
   positions: TextPosition[];
 } {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+  );
   const chars: string[] = [];
   const positions: TextPosition[] = [];
-  let current = walker.nextNode() as Text | null;
+  let current = walker.nextNode();
 
   while (current) {
-    for (let offset = 0; offset < current.data.length; offset++) {
-      const char = current.data[offset];
-      if (/\s/.test(char)) {
-        if (chars.length === 0) continue;
-        if (chars[chars.length - 1] === ' ') {
-          positions[positions.length - 1].endNode = current;
-          positions[positions.length - 1].endOffset = offset + 1;
-          continue;
-        }
-        chars.push(' ');
-      } else {
-        chars.push(char);
+    if (current.nodeType === Node.TEXT_NODE) {
+      const text = current as Text;
+      const preserveNewlines = preservesTextNewlines(text.parentElement);
+      for (let offset = 0; offset < text.data.length; offset++) {
+        const rawChar = text.data[offset];
+        const char = preserveNewlines && /[\r\n]/.test(rawChar) ? '\n' : rawChar;
+        appendMappedChar(chars, positions, char, {
+          startNode: text,
+          startOffset: offset,
+          endNode: text,
+          endOffset: offset + 1,
+        });
       }
-      positions.push({
-        startNode: current,
-        startOffset: offset,
-        endNode: current,
-        endOffset: offset + 1,
-      });
+    } else if (current instanceof HTMLBRElement) {
+      const parent = current.parentNode;
+      if (parent) {
+        const offset = Array.prototype.indexOf.call(parent.childNodes, current);
+        appendMappedChar(chars, positions, '\n', {
+          startNode: parent,
+          startOffset: offset,
+          endNode: parent,
+          endOffset: offset + 1,
+        });
+      }
     }
-    current = walker.nextNode() as Text | null;
+    current = walker.nextNode();
   }
 
-  if (chars[chars.length - 1] === ' ') {
+  while (chars.length > 0 && /\s/.test(chars[chars.length - 1])) {
     chars.pop();
     positions.pop();
   }
   return { text: chars.join(''), positions };
+}
+
+function appendMappedChar(
+  chars: string[],
+  positions: TextPosition[],
+  rawChar: string,
+  position: TextPosition,
+): void {
+  if (/\s/.test(rawChar)) {
+    if (chars.length === 0) return;
+    const char = rawChar === '\n' ? '\n' : ' ';
+    const previous = chars[chars.length - 1];
+
+    if (char === '\n' && previous === ' ') {
+      chars.pop();
+      positions.pop();
+    } else if (previous === '\n') {
+      if (char === '\n') {
+        positions[positions.length - 1].endNode = position.endNode;
+        positions[positions.length - 1].endOffset = position.endOffset;
+      }
+      return;
+    } else if (previous === ' ') {
+      positions[positions.length - 1].endNode = position.endNode;
+      positions[positions.length - 1].endOffset = position.endOffset;
+      return;
+    }
+
+    chars.push(char);
+    positions.push(position);
+    return;
+  }
+
+  chars.push(rawChar);
+  positions.push(position);
+}
+
+function preservesTextNewlines(element: Element | null): boolean {
+  if (!element) return false;
+  return /^(pre|pre-wrap|pre-line|break-spaces)$/.test(
+    getComputedStyle(element).whiteSpace,
+  );
 }
 
 function rangeFromMappedText(
@@ -185,9 +235,14 @@ function rangeContains(container: Range, inner: Range): boolean {
 }
 
 function splitSentences(text: string): string[] {
-  const matches = text.match(SENTENCE_SPLIT);
-  if (!matches) return [text];
-  const parts = matches.map((s) => s.trim()).filter(Boolean);
+  const visualLines = text
+    .split(/\n+/)
+    .map((line) => normalize(line))
+    .filter(Boolean);
+  const parts = visualLines.flatMap((line) => {
+    const matches = line.match(SENTENCE_SPLIT);
+    return (matches ?? [line]).map((sentence) => sentence.trim()).filter(Boolean);
+  });
   // 无标点段落（如社交长文）切分后会塌缩，丢字则兜底为整段
   const joinedLen = parts.join('').length;
   if (parts.length === 0 || joinedLen < text.replace(/\s/g, '').length * 0.6) {
